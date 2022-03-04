@@ -1,0 +1,16 @@
+*.pyc
+*.pyo
+/addresses.db
+.idea/
+python
+/addresses-BTC.db
+venv/
+HashCheck.txt
+bitcoinlib/.coveragerc
+wallet.aes.json
+test.txt
+tokenlist.txt
+seeds.txt
+btcrecover-tokens-auto.txt
+site/
+possible_passwords.log
