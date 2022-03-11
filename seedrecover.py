@@ -19,7 +19,7 @@
 # If you find this program helpful, please consider a small
 # donation to the developer at the following Bitcoin address:
 #
-#           3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4
+#           bc1q2rfdnec5jmm2eczdgxlymugquqvftmw2kvvruv
 #
 #                      Thank You!
 
@@ -42,11 +42,12 @@ if __name__ == "__main__":
             print()
             print(
                 "If this tool helped you to recover funds, please consider donating 1% of what you recovered, in your crypto of choice to:")
-            print("BTC: 37N7B7sdHahCXTcMJgEnHz7YmiR4bEqCrS ")
-            print("BCH: qpvjee5vwwsv78xc28kwgd3m9mnn5adargxd94kmrt ")
-            print("LTC: M966MQte7agAzdCZe5ssHo7g9VriwXgyqM ")
-            print("ETH: 0x72343f2806428dbbc2C11a83A1844912184b4243 ")
-
+            print("BTC: bc1q2rfdnec5jmm2eczdgxlymugquqvftmw2kvvruv ")
+            print("BCH: qpz0xfeqpxnlwnevxpvx39nwp5qsedsfpgwn73ce6j ")
+            print("LTC: ltc1qy3w2j4rs33l07vscsyedw7vcc642868e6nqnjr ")
+            print("ETH: 0xd0D94C2D870d55F487bbE2904EDfEA06fc9a1a6f ")
+            print("BNB: 0xd0D94C2D870d55F487bbE2904EDfEA06fc9a1a6f ")
+            
             # Selective Donation Addressess depending on path being recovered... (To avoid spamming the dialogue with shitcoins...)
             # TODO: Implement this better with a dictionary mapping in seperate PY file with BTCRecover specific donation addys... (Seperate from YY Channel)
             if path_coin == 28:
@@ -65,10 +66,10 @@ if __name__ == "__main__":
                 print("DOGE: DMQ6uuLAtNoe5y6DCpxk2Hy83nYSPDwb5T ")
 
             print()
-            print("Find me on Reddit @ https://www.reddit.com/user/Crypto-Guide")
+            print("Find me on Twitter @ https://twitter.com/_sameerofficial")
             print()
             print(
-                "You may also consider donating to Gurnec, who created and maintained this tool until late 2017 @ 3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4")
+                "You may also consider donating to Gurnec, who created and maintained this tool until late 2017 @ bc1q2rfdnec5jmm2eczdgxlymugquqvftmw2kvvruv")
             print()
             print("Seed found:", mnemonic_sentence)  # never dies from printing Unicode
 
