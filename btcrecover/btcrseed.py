@@ -41,6 +41,7 @@ import btcrecover.opencl_helpers
 from lib.pyzil.account import Account as zilliqa_account
 import lib.bech32 as bech32
 import lib.cardano.cardano_utils as cardano
+import lib.stacks.c32 as c32
 
 
 # Import modules from requirements.txt
@@ -414,7 +415,7 @@ class WalletElectrum1(WalletBase):
     # Creates a wallet instance from either an mpk, an addresses container and address_limit,
     # or a hash160s container. If none of these were supplied, prompts the user for each.
     @classmethod
-    def create_from_params(cls, mpk = None, addresses = None, address_limit = None, hash160s = None, is_performance = False, address_start_index = None, force_p2sh = False):
+    def create_from_params(cls, mpk = None, addresses = None, address_limit = None, hash160s = None, is_performance = False, address_start_index = None, force_p2sh = False, checksinglexpubaddress = False):
         self = cls(loading=True)
 
         # Process the mpk (master public key) argument
@@ -735,7 +736,7 @@ class WalletBIP32(WalletBase):
     # or a hash160s container. If none of these were supplied, prompts the user for each.
     # (the BIP32 key derivation path is by default BIP44's account 0)
     @classmethod
-    def create_from_params(cls, mpk = None, addresses = None, address_limit = None, hash160s = None, path = None, is_performance = False, address_start_index =  None, force_p2sh = False):
+    def create_from_params(cls, mpk = None, addresses = None, address_limit = None, hash160s = None, path = None, is_performance = False, address_start_index =  None, force_p2sh = False, checksinglexpubaddress = False):
         self = cls(path, loading=True)
 
         # Process the mpk (master public key) argument
@@ -782,6 +783,7 @@ class WalletBIP32(WalletBase):
 
         # Set other wallet parameters
         self.force_p2sh = force_p2sh
+        self.checksinglexpubaddress = checksinglexpubaddress
 
         # If mpk, addresses, and hash160s arguments were all not provided, prompt the user for an mpk first
         if not mpk and not addresses and not hash160s:
@@ -883,12 +885,18 @@ class WalletBIP32(WalletBase):
                         print("notice: address database file '"+ADDRESSDB_DEF_FILENAME+"' does not exist in current directory", file=sys.stderr)
                         sys.exit("canceled")
 
+            # There are some wallets where address generation limit doesn't apply at all...
+            if type(self) in [btcrecover.btcrseed.WalletPolkadotSubstrate]:
+                address_limit = 1
+
             if not address_limit:
                 init_gui()  # might not have been called yet
                 before_the = "one(s) you just entered" if addresses else "first one in actual use"
 
                 suggested_addr_limit = 10
-                if type(self) in [btcrecover.btcrseed.WalletTron, btcrecover.btcrseed.WalletEthereum, btcrecover.btcrseed.WalletSolana]:
+                # There are some wallets where account Generation limit isn't generally relevant, so suggest to set it as 1
+                if type(self) in [btcrecover.btcrseed.WalletTron, btcrecover.btcrseed.WalletEthereum, btcrecover.btcrseed.WalletSolana,
+                                  btcrecover.btcrseed.WalletCosmos, btcrecover.btcrseed.WalletStellar]:
                     suggested_addr_limit = 1
 
                 if tk_root:  # Skip if TK is not available...
@@ -996,6 +1004,17 @@ class WalletBIP32(WalletBase):
         if salt is None:
             salt = self._derivation_salts[0]
         # Derive the chain of private keys for the specified path as per BIP32
+        
+        if self.checksinglexpubaddress: #Atomic (Eth), MyBitcoinWallet, PT.BTC Wallet Single Address (Does things in a very non-standard way)
+            seed_bytes = arg_seed_bytes
+            privkey_bytes = seed_bytes[:32] # These wallets basically use the xprv a single private key...
+            pubkey = coincurve.PublicKey.from_valid_secret(privkey_bytes).format(compressed = False)
+            pubkey_hash160 = self.pubkey_to_hash160(pubkey)
+            if pubkey_hash160 in self._known_hash160s:
+                privkey_wif = base58.b58encode_check(bytes([0x80]) + privkey_bytes + bytes([0x1]))
+                print("Match found on Non-Standard Single Address, Privkey (Bitcoin Base58): ", privkey_wif)
+                print("Match found on Non-Standard Single Address, Privkey (Generic Hex): ", privkey_bytes.hex())
+                return True
 
         for current_path_index in self._path_indexes:
             seed_bytes = arg_seed_bytes
@@ -2059,7 +2078,7 @@ class WalletPyCryptoHDWallet(WalletBIP39):
     def __init__(self, path = None, loading = False):
         if not py_crypto_hd_wallet_available:
             print()
-            print("ERROR: Cannot import py_crypto_hd_wallet which is required for Solana wallets, install it via 'pip3 install py_crypto_hd_wallet'")
+            print("ERROR: Cannot import py_crypto_hd_wallet which is required for this wallet type, install it via 'pip3 install py_crypto_hd_wallet'")
             exit()
 
         super(WalletPyCryptoHDWallet, self).__init__(None, loading)
@@ -2156,7 +2175,34 @@ class WalletSolana(WalletPyCryptoHDWallet):
 
 @register_selectable_wallet_class('Avalanche BIP39/44 (X-Addresses)')
 class WalletAvalanche(WalletPyCryptoHDWallet):
+    def _verify_seed(self, mnemonic, passphrase = None):
+        if passphrase:
+           testSaltList = [passphrase]
+        else:
+           testSaltList = self._derivation_salts
 
+        for salt in testSaltList:
+
+           wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.AVAX_X_CHAIN)
+
+           wallet2 = wallet.CreateFromMnemonic("Avalanche", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
+
+           wallet2.Generate(addr_num=self._addrs_to_generate, addr_off=self._address_start_index, acc_idx=0,
+                             change_idx=py_crypto_hd_wallet.HdWalletBipChanges.CHAIN_EXT)
+
+           walletDict = wallet2.ToDict()['address']
+
+           for address in walletDict:
+               if walletDict[address]['address'] in self._known_hash160s:
+                   return True
+
+        return False
+
+
+############### Stellar ###############
+
+@register_selectable_wallet_class('Stellar BIP39/44')
+class WalletStellar(WalletPyCryptoHDWallet):
     def _verify_seed(self, mnemonic, passphrase = None):
         if passphrase:
             testSaltList = [passphrase]
@@ -2165,17 +2211,15 @@ class WalletAvalanche(WalletPyCryptoHDWallet):
 
         for salt in testSaltList:
 
-            wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.AVAX_X_CHAIN)
+            wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.STELLAR)
 
-            wallet2 = wallet.CreateFromMnemonic("Avalanche", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
+            wallet2 = wallet.CreateFromMnemonic("Stellar", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
 
-            wallet2.Generate(addr_num=self._addrs_to_generate, addr_off=self._address_start_index, acc_idx=0,
-                             change_idx=py_crypto_hd_wallet.HdWalletBipChanges.CHAIN_EXT)
+            for account_index in range(self._address_start_index, self._address_start_index + self._addrs_to_generate):
+                wallet2.Generate(addr_num=1, addr_off=0, acc_idx=account_index,
+                                 change_idx=py_crypto_hd_wallet.HdWalletBipChanges.CHAIN_EXT)
 
-            walletDict = wallet2.ToDict()['address']
-
-            for address in walletDict:
-                if walletDict[address]['address'] in self._known_hash160s:
+                if wallet2.ToDict()['account_key']['address'] in self._known_hash160s:
                     return True
 
         return False
@@ -2196,6 +2240,139 @@ class WalletTron(WalletPyCryptoHDWallet):
             wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.TRON)
 
             wallet2 = wallet.CreateFromMnemonic("Tron", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
+
+            for account_index in range(self._address_start_index, self._address_start_index + self._addrs_to_generate):
+                wallet2.Generate(addr_num=1, addr_off=0, acc_idx=account_index,
+                                 change_idx=py_crypto_hd_wallet.HdWalletBipChanges.CHAIN_EXT)
+
+                if wallet2.ToDict()['address']['address_0']['address'] in self._known_hash160s:
+                    return True
+
+        return False
+
+############### Polkadot (Substrate) ###############
+
+@register_selectable_wallet_class('Polkdadot Substrate Wallet (sr25519)')
+class WalletPolkadotSubstrate(WalletPyCryptoHDWallet):
+    substratePaths = [""]
+
+    def __init__(self, path = None, loading = False):
+        if not py_crypto_hd_wallet_available:
+            print()
+            print("ERROR: Cannot import py_crypto_hd_wallet which is required for Polkadot wallets, install it via 'pip3 install py_crypto_hd_wallet'")
+            exit()
+
+        if path:
+            self.substratePaths = path
+
+        super(WalletPyCryptoHDWallet, self).__init__(None, loading)
+
+    def _verify_seed(self, mnemonic, passphrase = None):
+        if passphrase:
+            testSaltList = [passphrase]
+        else:
+            testSaltList = self._derivation_salts
+
+        for salt in testSaltList:
+            wallet = py_crypto_hd_wallet.HdWalletSubstrateFactory(py_crypto_hd_wallet.HdWalletSubstrateCoins.POLKADOT)
+
+            wallet2 = wallet.CreateFromMnemonic("PolkadotSubstrate", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
+
+            for path in self.substratePaths:
+                wallet2.Generate(path = path)
+                if wallet2.ToDict()['key']['address'] in self._known_hash160s:
+                  return True
+                
+        return False
+
+############### Cosmos ###############
+
+@register_selectable_wallet_class('Cosmos BIP44')
+class WalletCosmos(WalletPyCryptoHDWallet):
+    def _verify_seed(self, mnemonic, passphrase = None):
+        if passphrase:
+           testSaltList = [passphrase]
+        else:
+           testSaltList = self._derivation_salts
+
+        for salt in testSaltList:
+
+           wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.COSMOS)
+
+           wallet2 = wallet.CreateFromMnemonic("Cosmos", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
+
+           for account_index in range(self._address_start_index, self._address_start_index + self._addrs_to_generate):
+               wallet2.Generate(addr_num=1, addr_off=0, acc_idx=account_index,
+                                change_idx=py_crypto_hd_wallet.HdWalletBipChanges.CHAIN_EXT)
+
+               if wallet2.ToDict()['address']['address_0']['address'] in self._known_hash160s:
+                   return True
+
+        return False
+
+############### Tezos ###############
+
+@register_selectable_wallet_class('Tezos BIP44')
+class WalletTezos(WalletPyCryptoHDWallet):
+    def _verify_seed(self, mnemonic, passphrase = None):
+        if passphrase:
+            testSaltList = [passphrase]
+        else:
+            testSaltList = self._derivation_salts
+
+        for salt in testSaltList:
+
+            wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.TEZOS)
+
+            wallet2 = wallet.CreateFromMnemonic("Tezos", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
+
+            for account_index in range(self._address_start_index, self._address_start_index + self._addrs_to_generate):
+                wallet2.Generate(addr_num=1, addr_off=0, acc_idx=account_index,
+                                 change_idx=py_crypto_hd_wallet.HdWalletBipChanges.CHAIN_EXT)
+
+                if wallet2.ToDict()['change_key']['address'] in self._known_hash160s:
+                    return True
+
+        return False
+
+############### Secret Network ###############
+
+@register_selectable_wallet_class('Secret Network BIP44 (Old/Ledger Derivation Path)')
+class WalletSecretNetworkOld(WalletPyCryptoHDWallet):
+      def _verify_seed(self, mnemonic, passphrase = None):
+        if passphrase:
+            testSaltList = [passphrase]
+        else:
+            testSaltList = self._derivation_salts
+
+        for salt in testSaltList:
+
+            wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.SECRET_NETWORK_OLD)
+
+            wallet2 = wallet.CreateFromMnemonic("Cosmos", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
+
+            for account_index in range(self._address_start_index, self._address_start_index + self._addrs_to_generate):
+                wallet2.Generate(addr_num=1, addr_off=0, acc_idx=account_index,
+                                 change_idx=py_crypto_hd_wallet.HdWalletBipChanges.CHAIN_EXT)
+
+                if wallet2.ToDict()['address']['address_0']['address'] in self._known_hash160s:
+                    return True
+
+        return False
+
+@register_selectable_wallet_class('Secret Network BIP44 (New Derivation Path)')
+class WalletSecretNetworkNew(WalletPyCryptoHDWallet):
+      def _verify_seed(self, mnemonic, passphrase = None):
+        if passphrase:
+            testSaltList = [passphrase]
+        else:
+            testSaltList = self._derivation_salts
+
+        for salt in testSaltList:
+
+            wallet = py_crypto_hd_wallet.HdWalletBipFactory(py_crypto_hd_wallet.HdWalletBip44Coins.SECRET_NETWORK_NEW)
+
+            wallet2 = wallet.CreateFromMnemonic("Cosmos", mnemonic = " ".join(mnemonic), passphrase = salt.decode())
 
             for account_index in range(self._address_start_index, self._address_start_index + self._addrs_to_generate):
                 wallet2.Generate(addr_num=1, addr_off=0, acc_idx=account_index,
@@ -2334,6 +2511,7 @@ class WalletHelium(WalletBIP39):
                 return mnemonic_ids, count  # found it
 
         return False, count
+
 
 ############### BCH ###############
 
@@ -2514,6 +2692,33 @@ class WalletRipple(WalletBIP39):
         self = super(WalletRipple, cls).create_from_params(*args, **kwargs)
         return self
 
+############### Stacks (STX)  ###############
+
+@register_selectable_wallet_class('Stacks Standard BIP39/44')
+class WalletStacks(WalletBIP39):
+
+    def __init__(self, path = None, loading = False):
+        if not path: path = ["m/44'/5757'/0'/0"]
+        super(WalletStacks, self).__init__(path, loading)
+
+
+    def __setstate__(self, state):
+        super(WalletStacks, self).__setstate__(state)
+        # (re-)load the required libraries after being unpickled
+
+    @classmethod
+    def create_from_params(cls, *args, **kwargs):
+        self = super(WalletStacks, cls).create_from_params(*args, **kwargs)
+        return self
+
+    @staticmethod
+    def _addresses_to_hash160s(addresses):
+        hash160s = set()
+        for address in addresses:
+            ver, hash160 = c32.c32addressDecode(address)
+            hash160s.add(binascii.unhexlify(hash160))
+        return hash160s
+
 ################################### Main ###################################
 
 tk_root = None
@@ -2584,7 +2789,7 @@ def replace_wrong_word(mnemonic_ids, i):
 #               full word list, and significantly increases the search time
 #   min_typos - min number of mistakes to apply to each guess
 num_inserts = num_deletes = 0
-def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, extra_args = [], tokenlist = None, passwordlist = None, listpass = None):
+def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, extra_args = [], tokenlist = None, passwordlist = None, listpass = None, min_tokens = None, max_tokens = None, mnemonic_length = None):
     if typos < 0:  # typos == 0 is silly, but causes no harm
         raise ValueError("typos must be >= 0")
     if big_typos < 0:
@@ -2606,9 +2811,19 @@ def run_btcrecover(typos, big_typos = 0, min_typos = 0, is_performance = False, 
 
     if tokenlist:
         btcr_args += " --tokenlist " + str(tokenlist)
-        btcr_args += " --max-tokens " + str(big_typos)
-        btcr_args += " --min-tokens " + str(big_typos)
+
+        if max_tokens:
+            btcr_args += " --max-tokens " + str(max_tokens)
+        else:
+            btcr_args += " --max-tokens " + str(big_typos)
+
+        if min_tokens:
+            btcr_args += " --min-tokens " + str(min_tokens)
+        else:
+            btcr_args += " --min-tokens " + str(big_typos)
+
         btcr_args += " --seedgenerator"
+        btcr_args += " --mnemonic-length " + str(mnemonic_length)
 
     if passwordlist:
         btcr_args += " --passwordlist " + str(passwordlist)
@@ -2767,6 +2982,7 @@ def main(argv):
         parser.add_argument("--min-typos",   type=int, metavar="COUNT", help="enforce a min # of mistakes per guess")
         parser.add_argument("--close-match",type=float,metavar="CUTOFF",help="try words which are less/more similar for each mistake (0.0 to 1.0, default: 0.65)")
         parser.add_argument("--passphrase",  action="store_true",       help="the mnemonic is augmented with a known passphrase (BIP39 or Electrum 2.x only)")
+        parser.add_argument("--passphrase-arg",  metavar="PASSPHRASE", nargs="+", help="the mnemonic is augmented with a known passphrase, entered directly as an argument (BIP39 or Electrum 2.x only)")
         parser.add_argument("--passphrase-list", metavar="FILE", help="Path to a file containing a list of passphrases to test")
         parser.add_argument("--passphrase-prompt", action="store_true", help="prompt for the mnemonic passphrase via the terminal (default: via the GUI)")
         parser.add_argument("--mnemonic",  metavar="MNEMONIC",       help="Your best guess of the mnemonic (if not entered, you will be prompted)")
@@ -2774,6 +2990,8 @@ def main(argv):
         parser.add_argument("--mnemonic-length", type=int, metavar="WORD-COUNT", help="the length of the correct mnemonic (default: auto)")
         parser.add_argument("--language",    metavar="LANG-CODE",       help="the wordlist language to use (see wordlists/README.md, default: auto)")
         parser.add_argument("--bip32-path",  metavar="PATH", nargs="+",           help="path (e.g. m/0'/0/) excluding the final index. You can specify multiple derivation paths seperated by a space Eg: m/84'/0'/0'/0 m/84'/0'/1'/0 (default: BIP44,BIP49 & BIP84 account 0)")
+        parser.add_argument("--substrate-path",  metavar="PATH", nargs="+",           help="Substrate path (eg: //hard/soft). You can specify multiple derivation paths by a space Eg: //hard /soft //hard/soft (default: No Path)")
+        parser.add_argument("--checksinglexpubaddress", action="store_true", help="Check non-standard single address wallets (Like Atomic, MyBitcoinWallet, PT.BTC")
         parser.add_argument("--force-p2sh",  action="store_true",   help="Force checking of P2SH segwit addresses for all derivation paths (Required for devices like CoolWallet S if if you are using P2SH segwit accounts on a derivation path that doesn't start with m/49')")
         parser.add_argument("--pathlist",    metavar="FILE",        help="A list of derivation paths to be searched")
         parser.add_argument("--skip",        type=int, metavar="COUNT", help="skip this many initial passwords for continuing an interrupted search")
@@ -2790,6 +3008,8 @@ def main(argv):
         parser.add_argument("--version","-v",action="store_true",   help="show full version information and exit")
         parser.add_argument("--disablesecuritywarnings", "--dsw", action="store_true", help="Disable Security Warning Messages")
         parser.add_argument("--tokenlist", metavar="FILE", help="The list of BIP39 words to be searched, formatted as a tokenlist")
+        parser.add_argument("--max-tokens", type=int, help="The max number of tokens use to create potential seeds from the tokenlist")
+        parser.add_argument("--min-tokens", type=int, help="The minimum number of tokens use to create potential seeds from the tokenlist")
         parser.add_argument("--seedlist", metavar="FILE", nargs="?", const="-",
                             help="A list of seed phrases to test (exactly one per line) from this file or from stdin, if used in conjunction with --multi-file-seedlist, this is the name of the first file to load")
         parser.add_argument("--multi-file-seedlist",action="store_true",   help="Enables the loading of a seedlist file split over mulitple files with the suffix _XXXX.txt")
@@ -2961,6 +3181,8 @@ def main(argv):
                     break
                 print("The passphrases did not match, try again.")
             config_mnemonic_params["passphrases"] = [passphrase,]
+        elif args.passphrase_arg:
+            config_mnemonic_params["passphrases"] = args.passphrase_arg
         elif args.passphrase or args.passphrase_list:
             config_mnemonic_params["passphrases"] = True  # config_mnemonic() will prompt for one
 
@@ -2976,6 +3198,10 @@ def main(argv):
             config_mnemonic_params["mnemonic_guess"] = ("seed_token_placeholder " * args.mnemonic_length)[:-1]
             phase["big_typos"] = args.mnemonic_length
             phase["typos"] = args.mnemonic_length
+            phase["max_tokens"] = args.max_tokens
+            phase["min_tokens"] = args.min_tokens
+            phase["mnemonic_length"] = args.mnemonic_length
+
             if args.tokenlist:
                 phase["tokenlist"] = args.tokenlist
 
@@ -2998,13 +3224,22 @@ def main(argv):
             else:
                 create_from_params["path"] = args.bip32_path
 
+        if args.substrate_path and not args.pathlist:
+            if args.wallet:
+                print("warning: --bip32-path is ignored when a wallet is provided", file=sys.stderr)
+            else:
+                create_from_params["path"] = args.substrate_path
+
         if args.pathlist:
             if args.bip32_path:
-                print("warning: Pathlist overrides any --bip32-path provided", file=sys.stderr)
+                print("warning: Pathlist overrides any --bip32-path or --substrate-path provided", file=sys.stderr)
             create_from_params["path"] = load_pathlist(args.pathlist)
 
         if args.force_p2sh:
             create_from_params["force_p2sh"] = True
+            
+        if args.checksinglexpubaddress:
+            create_from_params["checksinglexpubaddress"] = True
 
         # These arguments and their values are passed on to btcrpass.parse_arguments()
         for argkey in "skip", "threads", "worker", "max_eta":
