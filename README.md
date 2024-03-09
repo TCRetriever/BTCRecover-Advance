@@ -116,27 +116,30 @@ To try recovering your password or a BIP39 passphrase, please start with the **[
 
 If you mostly know your recovery seed/mnemonic (12-24 recovery words), but think there may be a mistake in it, please see the **[Seed Recovery Quick Start](docs/Seedrecover_Quick_Start_Guide.md)**.
 
-## If this tool or other content on my YouTube channel was helpful, feel free to send a tip to: ##
+## If this tool was helpful, feel free to send a tip to: ##
 
-![Donate Bitcoin]
+![Donate Bitcoin](docs/Images/donate-btc-qr.png)
 
-BTC: bc1qruelhm4mkvtjr0ls5c5p0n6gxy3jsm09cz5rud
+BTC: 37N7B7sdHahCXTcMJgEnHz7YmiR4bEqCrS
 
-![Donate Bitcoin Cash]
+![Donate Bitcoin Cash](docs/Images/donate-bch-qr.png)
 
-BCH: bc1qruelhm4mkvtjr0ls5c5p0n6gxy3jsm09cz5rud
+BCH: qpvjee5vwwsv78xc28kwgd3m9mnn5adargxd94kmrt
 
-![Donate Litecoin].
-LTC: ltc1q0rjshl6k08n3732grhkc5y9slvn5cl5v5zf8yy
+![Donate Litecoin](docs/Images/donate-ltc-qr.png)
 
-![Donate Ethereum]
-ETH: 0x89441c11d6618CFad83593597F405cd9e55412Aa
+LTC: M966MQte7agAzdCZe5ssHo7g9VriwXgyqM
+
+![Donate Ethereum](docs/Images/donate-eth-qr.png)
+
+ETH: 0x72343f2806428dbbc2C11a83A1844912184b4243
 
 ## Thanks to Gurnec ##
 This tool builds on the original work of Gurnec who created it and maintained it until late 2017. If you find *btcrecover* helpful, please consider a small donation to them too. (I will also be passing on a portion of any tips I recieve at the addys above to them too)
 
-![Donate Bitcoin]
+![Donate Bitcoin](docs/Images/gurnec-donate-btc-qr.png)
 
-BTC: bc1qruelhm4mkvtjr0ls5c5p0n6gxy3jsm09cz5rud
+BTC: 3Au8ZodNHPei7MQiSVAWb7NB2yqsb48GW4
 
 **Thank You!**
+
